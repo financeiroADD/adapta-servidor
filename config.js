@@ -41,6 +41,16 @@ module.exports = {
     base: endereco(env('PEDIDOOK_BASE', 'https://api.pedidook.com.br/v1'), 'https://api.pedidook.com.br/v1')
   },
   ANTHROPIC_KEY: env('ANTHROPIC_API_KEY'),
+  // Áudio do WhatsApp: transcrição pela OpenAI. Sem OPENAI_API_KEY, o Adaptus pede a pergunta por escrito.
+  TRANSCRICAO: {
+    chave: env('OPENAI_API_KEY'),
+    modelo: /^[a-z0-9._-]{1,60}$/i.test(env('TRANSCRICAO_MODELO', 'gpt-transcribe')) ? env('TRANSCRICAO_MODELO', 'gpt-transcribe') : 'gpt-transcribe',
+    base: endereco(env('OPENAI_BASE', 'https://api.openai.com/v1'), 'https://api.openai.com/v1'),
+    // tamanho máximo do áudio (5 MB de nota de voz dá bem mais de 10 minutos de fala); protege o gasto
+    maxBytes: Math.min(16, Math.max(1, Number(env('AUDIO_MAX_MB', '5')) || 5)) * 1024 * 1024,
+    // "confirmar" por áudio grava no PedidoOK? Desligado por padrão: para gravar, a pessoa digita "confirmar".
+    confirmarPorAudio: env('AUDIO_CONFIRMA', '0') === '1'
+  },
   SYNC_HORAS: Math.max(1, Number(env('SYNC_HORAS', '2')) || 2),
   LIMITE_MSG_HORA: Math.max(1, Number(env('LIMITE_MSG_HORA', '40')) || 40),   // por pessoa, protege o saldo da IA
   LIMITE_MSG_DIA: Math.max(1, Number(env('LIMITE_MSG_DIA', '300')) || 300),

@@ -7,6 +7,7 @@ const SEG = require('./seguranca');
 const wa = require('./whatsapp');
 const U = require('./usuarios');
 const agente = require('./agente');
+const TR = require('./transcricao');
 const { Dados } = require('./dados');
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
@@ -27,6 +28,30 @@ function naFila(chave, fn) {
   filas.set(chave, prox); prox.finally(() => { if (filas.get(chave) === prox) filas.delete(chave); });
 }
 
+// Nota de voz: baixa da Meta, transcreve e responde como se a pessoa tivesse digitado.
+// "confirmar" por áudio não grava no PedidoOK (a não ser com AUDIO_CONFIRMA=1): a gravação pede o "confirmar" digitado.
+const CONFIRMAR_POR_VOZ = /^(confirmar|confirmo|confirma|confirmado|pode gravar|grava|gravar)[\s!.]*$/i;
+async function responderAudio(m, u) {
+  if (!TR.ligada()) return 'Ainda não consigo ouvir áudio. Pode mandar a pergunta por escrito?';
+  let ouvido;
+  try {
+    if (!TR.extensaoDe(m.mime)) return 'Não consigo ouvir esse formato de áudio. Grave uma nota de voz pelo microfone do WhatsApp ou mande por escrito.';
+    const midia = await wa.baixarMidia(m.midiaId);
+    ouvido = await TR.transcrever({ buffer: midia.buffer, mime: midia.mime || m.mime });
+  } catch (e) {
+    log('áudio não transcrito', mascarar(m.de), e && e.message);
+    if (e && e.longo) return 'Esse áudio ficou longo demais para eu ouvir. Grave um áudio mais curto ou mande por escrito.';
+    if (e && e.formato) return 'Não consigo ouvir esse formato de áudio. Grave uma nota de voz pelo microfone do WhatsApp ou mande por escrito.';
+    return 'Não consegui ouvir esse áudio agora. Pode tentar de novo ou mandar por escrito?';
+  }
+  if (!ouvido) return 'Não consegui entender o áudio (parece vazio ou com muito barulho). Pode gravar de novo ou mandar por escrito?';
+  m.ouvido = ouvido;
+  log('áudio transcrito', mascarar(m.de), u.papel, ouvido.length + ' caracteres');
+  if (!cfg.TRANSCRICAO.confirmarPorAudio && CONFIRMAR_POR_VOZ.test(ouvido.trim()))
+    return 'Por segurança, gravar no PedidoOK só vale com o *confirmar* digitado. Digite *confirmar* para gravar ou *cancelar*.';
+  return agente.responder({ dados, usuario: u, texto: ouvido });
+}
+
 async function tratar(m) {
   if (!m.id || vistos.has(m.id)) return;
   vistos.add(m.id); if (vistos.size > 5000) vistos.delete(vistos.values().next().value);
@@ -45,9 +70,10 @@ async function tratar(m) {
     let resp;
     if (m.texto) resp = await agente.responder({ dados, usuario: u, texto: m.texto });
     else if (m.tipo === 'image') resp = 'Recebi a imagem. A leitura de print de pedido por aqui chega na próxima etapa. Por enquanto, mande o pedido em texto ou use o programa.';
-    else if (m.tipo === 'audio') resp = 'Ainda não consigo ouvir áudio. Pode mandar a pergunta por escrito?';
+    else if (m.tipo === 'audio') resp = await responderAudio(m, u);
     else resp = 'Por enquanto eu só entendo mensagens de texto.';
-    const texto = typeof resp === 'string' ? resp : resp.texto;
+    let texto = typeof resp === 'string' ? resp : resp.texto;
+    if (m.tipo === 'audio' && m.ouvido) texto = `🎤 _Entendi:_ "${m.ouvido.length > 300 ? m.ouvido.slice(0, 300) + '…' : m.ouvido}"\n\n` + texto;
     await wa.enviarTexto(m.de, wa.paraWhatsApp(texto));
     if (resp && resp.banido) { log('SEGURANÇA: acesso bloqueado', mascarar(m.de), u.papel); avisarDonos(u, chave, resp.ocorrencia).catch(e => log('aviso ao dono falhou', e && e.message)); }
     else if (resp && resp.bloqueado) log('SEGURANÇA: mensagem barrada', mascarar(m.de), u.papel);
@@ -139,6 +165,7 @@ servidor.listen(cfg.PORT, () => {
   if (cfg.WHATSAPP.verifyToken && cfg.WHATSAPP.verifyToken.length < 16) log('ATENÇÃO: WHATSAPP_VERIFY_TOKEN curto; use 16 caracteres ou mais.');
   if (!cfg.PRODUCAO) log('Modo de teste (NODE_ENV diferente de production).');
   log('Pessoas autorizadas:', usuarios.size);
+  log('Áudio:', TR.ligada() ? `ligado (transcrição ${cfg.TRANSCRICAO.modelo}${cfg.TRANSCRICAO.confirmarPorAudio ? ', "confirmar" por voz liberado' : ''})` : 'desligado (falta OPENAI_API_KEY)');
   dados.agendar();
 });
 module.exports = { servidor, dados, tratar };

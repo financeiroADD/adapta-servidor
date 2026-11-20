@@ -25,6 +25,13 @@ Recebe as mensagens do WhatsApp (API oficial da Meta), consulta os dados do Pedi
 - Teto do mês em reais em `TETO_IA_MES` (padrão 200; somado aos R$ 500 do programa, fecha os R$ 700 do mês). Perto dele a equipe fica sem análise completa; acima, segue respondida no modo rápido. O Dono continua com tudo.
 - Comando do Dono: `custo da IA` mostra o gasto do mês, a projeção e quanto foi em cada tipo de resposta.
 
+## Áudio (notas de voz)
+- A pessoa grava um áudio no WhatsApp; o servidor baixa da Meta, transcreve pela OpenAI (`gpt-transcribe`, português) e responde como se fosse texto digitado. A resposta começa com *🎤 Entendi: "..."* para a pessoa conferir o que foi ouvido.
+- O texto transcrito passa pelas mesmas regras do texto: guarda de segurança, perfil, limites de mensagens e teto da IA.
+- Liga com `OPENAI_API_KEY`. Sem ela, o Adaptus pede a pergunta por escrito.
+- `confirmar` falado **não** grava no PedidoOK: o Adaptus pede o *confirmar* digitado. Para aceitar por voz, `AUDIO_CONFIRMA=1`.
+- Áudio acima de `AUDIO_MAX_MB` (padrão 5 MB, bem mais de 10 minutos de nota de voz) é recusado. O gasto da transcrição sai na conta da OpenAI, não no `custo da IA`.
+
 ## Gravar no PedidoOK pelo WhatsApp
 Mesmas regras do programa (a partir da 1.4.0). A pessoa pede ("crie um orçamento para o Cristal Tower com 12 detergentes", "dê baixa na cobrança 123 por PIX"), o Adaptus confere os dados e prepara; o servidor responde com o resumo exato do que vai gravar e termina com **"Responda *confirmar* para gravar (vale por 30 minutos) ou *cancelar*"**. Só o `confirmar` da mesma pessoa grava. Sem isso, nada vai ao PedidoOK.
 
